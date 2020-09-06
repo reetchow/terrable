@@ -2,6 +2,18 @@ provider "aws" {
   region = "us-east-2"
 }
 
+terraform {
+  backend "s3" {
+    bucket = "reet-terraform-state"
+    key = "global/s3/terraform.tfstate"
+    region = "us-east-2"
+
+    dynamodb_table = "reet-terraform-locks"
+    encrypt = true
+  }
+
+}
+
 # Data is a way to get information from the provider about existing resources
 data "aws_vpc"  "default" {
   default = true
@@ -14,6 +26,41 @@ data "aws_subnet_ids" "default" {
 variable "server_port" {
   description = "The port the server will use for HTTP requests"
   type = number
+}
+
+resource "aws_s3_bucket" "terraform_state" {
+  # Needs to be globally unique across all AWS
+  bucket = "reet-terraform-state"
+
+  # Prevent accidental deletion of this bucket
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  # Revision history of all our state files
+  versioning {
+    enabled = true
+  }
+
+  # Enable SSE by default
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+}
+
+resource "aws_dynamodb_table" "terraform_locks" {
+  name = "reet-terraform-locks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
 }
 
 resource "aws_launch_configuration" "example" {
